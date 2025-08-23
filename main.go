@@ -1,0 +1,321 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"math/rand"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/joho/godotenv"
+	"github.com/xuri/excelize/v2"
+)
+
+var (
+	baseURL string
+	cookie  string
+)
+
+// User agent list (tidak berubah)
+var userAgents = []string{
+	"Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+	"Mozilla/5.0 (X11; Ubuntu; Linux x86_64) Gecko/20100101 Firefox/130.0",
+	"Mozilla/5.0 (X11; Arch Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.6065.0 Safari/537.36",
+	"Mozilla/5.0 (X11; Arch Linux x86_64; rv:129.0) Gecko/20100101 Firefox/129.0",
+	"Mozilla/5.0 (X11; Fedora; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+	"Mozilla/5.0 (X11; Fedora; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.7 Safari/605.1.15",
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+}
+
+type Jurusan struct {
+	JrsID   string `json:"jrsid"`
+	KodeJrs string `json:"kodejrs"`
+	NamaJrs string `json:"namajrs"`
+}
+
+type MataKuliah struct {
+	JID        string `json:"jid"`
+	Namamk     string `json:"namamk"`
+	SKS        string `json:"sks"`
+	Semester   string `json:"semester"`
+	Namadosen  string `json:"namadosen"`
+	NamaKelas  string `json:"nama_kelas"`
+	Hari       string `json:"namahari"`
+	JamKuliah  string `json:"jamkuliah"`
+	JmlPeserta string `json:"jmlpeserta"`
+	Bisainput  int    `json:"bisainput"`
+	Cetak      string `json:"cetak"`
+	Infomk     string `json:"infomk"`
+}
+
+type Nilai struct {
+	NIM      string `json:"nim"`
+	Nama     string `json:"nama"`
+	Hadir    string `json:"hadir"`
+	Projek   string `json:"projek"`
+	Quiz     string `json:"quiz"`
+	Tugas    string `json:"tugas"`
+	UTS      string `json:"uts"`
+	UAS      string `json:"uas"`
+	NilAngka string `json:"nil_angka"`
+	NilHuruf string `json:"nil_huruf"`
+	KRSID    string `json:"krsid"`
+	KHSID    string `json:"khsid"`
+}
+
+func main() {
+	if err := godotenv.Load(); err != nil {
+		fmt.Println("[WARN] .env tidak ditemukan, gunakan default env sistem")
+	}
+	baseURL = os.Getenv("BASE_URL")
+	cookie = os.Getenv("PHPSESSID")
+
+	// --- Ambil semester ---
+	semester := pilihSemester()
+	fmt.Println("[INFO] Semester dipilih:", semester)
+
+	// --- Load jurusan ---
+	cfgFile, err := os.ReadFile("jurusan.json")
+	if err != nil {
+		fmt.Println("[ERROR] Gagal baca jurusan.json:", err)
+		return
+	}
+	var jurusanList []Jurusan
+	if err := json.Unmarshal(cfgFile, &jurusanList); err != nil {
+		fmt.Println("[ERROR] Gagal parsing JSON:", err)
+		return
+	}
+
+	for _, jur := range jurusanList {
+		if jur.KodeJrs == "" {
+			continue
+		}
+		fmt.Printf("\n[INFO] Mulai scraping jurusan: %s\n", jur.NamaJrs)
+
+		// Set prodi
+		if err := setProdi(jur.KodeJrs, "REG", semester); err != nil {
+			fmt.Println("[ERROR] Gagal set prodi:", err)
+			continue
+		}
+
+		// Ambil daftar mata kuliah
+		respMK := getRekapMK()
+		if respMK == nil {
+			fmt.Println("[ERROR] Gagal ambil mata kuliah")
+			continue
+		}
+		fmt.Printf("MK: %d\n", len(respMK.Rows))
+
+		// Buat folder JSON & Excel berdasarkan jurusan + semester
+		folderJSON := filepath.Join("nilai_json", jur.NamaJrs, semester)
+		folderExcel := filepath.Join("nilai_excel", jur.NamaJrs, semester)
+		os.MkdirAll(folderJSON, os.ModePerm)
+		os.MkdirAll(folderExcel, os.ModePerm)
+
+		var mkList []MataKuliah
+		totals := len(respMK.Rows)
+		for _, mk := range respMK.Rows {
+			if mk.Cetak == "1" {
+				mkList = append(mkList, mk)
+			}
+		}
+
+		totalMK := len(mkList)
+		doneMK := 0
+		lastPercent := 0
+		for _, mk := range mkList {
+			nilaiMK := getListNilai(mk.Infomk)
+			if mk.Cetak != "1" {
+				continue
+			}
+
+			namaFile := strings.ReplaceAll(mk.Namamk, "/", "-")
+			writeJSON(filepath.Join(folderJSON, namaFile+".json"), nilaiMK)
+			writeExcel(filepath.Join(folderExcel, namaFile+".xlsx"), nilaiMK)
+
+			doneMK++
+			percent := doneMK * 100 / totalMK
+			if percent-lastPercent >= 5 || percent == 100 {
+				barLen := 40
+				pos := percent * barLen / 100
+				bar := strings.Repeat("=", pos) + strings.Repeat(" ", barLen-pos)
+				fmt.Printf("\r[PROGRESS] Mata kuliah %s: [%s] %d%% (%d/%d)", jur.NamaJrs, bar, percent, doneMK, totalMK)
+				lastPercent = percent
+			}
+		}
+
+		fmt.Println()
+
+		fmt.Printf("[INFO] Jurusan %s: berhasil simpan %d MK dari %d MK, terlewat %d MK karena status cetak = 0\n", jur.NamaJrs, doneMK, totals, totals-doneMK)
+
+	}
+
+	fmt.Println("\n[INFO] Semua data berhasil disimpan di folder nilai & excel")
+}
+
+// --- Fungsi baru untuk ambil semester ---
+func pilihSemester() string {
+	req, _ := http.NewRequest("POST", baseURL+"/_modul/aksi_umum.php?act=pilih_smtthnakd", nil)
+	setHeaders(req)
+
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println("[ERROR] Gagal ambil semester:", err)
+		os.Exit(1)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+
+	var semList []struct {
+		Keterangan string `json:"keterangan"`
+		Smtthnakd  string `json:"smtthnakd"`
+	}
+	if err := json.Unmarshal(body, &semList); err != nil {
+		fmt.Println("[ERROR] Gagal parsing JSON semester:", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Daftar Semester:")
+	for i, s := range semList {
+		fmt.Printf("[%d] %s\n", i+1, s.Keterangan)
+	}
+
+	var pilih int
+	fmt.Print("Pilih semester (nomor): ")
+	fmt.Scan(&pilih)
+	if pilih < 1 || pilih > len(semList) {
+		fmt.Println("[ERROR] Pilihan invalid")
+		os.Exit(1)
+	}
+
+	return semList[pilih-1].Smtthnakd
+}
+
+// --- Set prodi ---
+func setProdi(kodeProdi, kodePK, smthn string) error {
+	form := url.Values{}
+	form.Set("ps", kodeProdi)
+	form.Set("pk", kodePK)
+	form.Set("smthn", smthn)
+
+	req, _ := http.NewRequest("POST", baseURL+"/_modul/mod_prodi_smthn/aksi_prodi_smthn.php", strings.NewReader(form.Encode()))
+	setHeaders(req)
+
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	io.ReadAll(res.Body)
+	return nil
+}
+
+// --- Fungsi lain tetap sama ---
+func getRekapMK() *struct {
+	Total int          `json:"total"`
+	Rows  []MataKuliah `json:"rows"`
+} {
+	data := "page=1&rows=300&sort=hari&order=asc"
+	req, _ := http.NewRequest("POST", baseURL+"/_modul/mod_nilmk/aksi_nilmk.php?act=rekapNILMK", strings.NewReader(data))
+	setHeaders(req)
+
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println("[ERROR] ", err)
+		return nil
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+
+	var resp struct {
+		Total int          `json:"total"`
+		Rows  []MataKuliah `json:"rows"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		fmt.Println("[ERROR] Gagal parsing JSON:", err)
+		return nil
+	}
+	return &resp
+}
+
+func getListNilai(infomk string) []Nilai {
+	form := url.Values{}
+	form.Set("param", infomk)
+	form.Set("cetak", "1")
+
+	req, _ := http.NewRequest("POST", baseURL+"/_modul/mod_nilmk/aksi_nilmk.php?act=listNILMK", strings.NewReader(form.Encode()))
+	setHeaders(req)
+
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println("[ERROR] ", err)
+		return nil
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+
+	var hasil []Nilai
+	if err := json.Unmarshal(body, &hasil); err != nil {
+		fmt.Println("[ERROR] Gagal parsing JSON listNILMK:", err)
+		return nil
+	}
+	return hasil
+}
+
+func writeJSON(path string, data interface{}) {
+	file, err := os.Create(path)
+	if err != nil {
+		fmt.Println("[ERROR] Gagal buat file:", path, err)
+		return
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		fmt.Println("[ERROR] Gagal tulis JSON:", err)
+	}
+}
+
+func writeExcel(path string, data []Nilai) {
+	f := excelize.NewFile()
+	sheet := "Sheet1"
+	headers := []string{"NIM", "Nama Peserta", "Angka", "Huruf", "Kehadiran", "Projek", "Quiz", "Tugas", "UTS", "UAS"}
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(sheet, cell, h)
+	}
+
+	for i, n := range data {
+		row := i + 2
+		values := []interface{}{n.NIM, n.Nama, n.NilAngka, n.NilHuruf, n.Hadir, n.Projek, n.Quiz, n.Tugas, n.UTS, n.UAS}
+		for j, v := range values {
+			cell, _ := excelize.CoordinatesToCellName(j+1, row)
+			f.SetCellValue(sheet, cell, v)
+		}
+	}
+
+	if err := f.SaveAs(path); err != nil {
+		fmt.Println("[ERROR] Gagal simpan Excel:", path, err)
+	}
+}
+
+func setHeaders(req *http.Request) {
+	ua := userAgents[rand.Intn(len(userAgents))]
+	req.Header.Set("User-Agent", ua)
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("Referer", baseURL+"/media.php")
+	req.Header.Set("Origin", baseURL)
+	req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+	req.Header.Set("Cookie", cookie)
+}
