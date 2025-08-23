@@ -10,8 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
-	"github.com/joho/godotenv"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -51,6 +51,7 @@ type MataKuliah struct {
 	Bisainput  int    `json:"bisainput"`
 	Cetak      string `json:"cetak"`
 	Infomk     string `json:"infomk"`
+	Kelas      string `json:"kelas"`
 }
 
 type Nilai struct {
@@ -69,11 +70,25 @@ type Nilai struct {
 }
 
 func main() {
-	if err := godotenv.Load(); err != nil {
-		fmt.Println("[WARN] .env tidak ditemukan, gunakan default env sistem")
+	// --- Input username & password ---
+
+	LoadConfig()
+	// fmt.Print(USERNAME)
+	// var username, password string
+	// fmt.Print("Username: " + USERNAME)
+	// fmt.Scan(&username)
+	// fmt.Print("Password: ")
+	// fmt.Scan(&password)
+	// fmt.Println("[INFO] BASE_URL:", BaseURL)
+	username := USERNAME
+	password := PASSWORD
+	baseURL = BaseURL
+	// --- LOGIN OTOMATIS ---
+	if !login(username, password) {
+		fmt.Println("[ERROR] Login gagal, cek username/password")
+		return
 	}
-	baseURL = os.Getenv("BASE_URL")
-	cookie = os.Getenv("PHPSESSID")
+	fmt.Println("[INFO] Login berhasil!")
 
 	// --- Ambil semester ---
 	semester := pilihSemester()
@@ -91,27 +106,25 @@ func main() {
 		return
 	}
 
+	// --- Proses scraping per jurusan ---
 	for _, jur := range jurusanList {
 		if jur.KodeJrs == "" {
 			continue
 		}
 		fmt.Printf("\n[INFO] Mulai scraping jurusan: %s\n", jur.NamaJrs)
 
-		// Set prodi
 		if err := setProdi(jur.KodeJrs, "REG", semester); err != nil {
 			fmt.Println("[ERROR] Gagal set prodi:", err)
 			continue
 		}
 
-		// Ambil daftar mata kuliah
 		respMK := getRekapMK()
 		if respMK == nil {
 			fmt.Println("[ERROR] Gagal ambil mata kuliah")
 			continue
 		}
-		fmt.Printf("MK: %d\n", len(respMK.Rows))
+		fmt.Printf("Total MK: %d\n", len(respMK.Rows))
 
-		// Buat folder JSON & Excel berdasarkan jurusan + semester
 		folderJSON := filepath.Join("nilai_json", jur.NamaJrs, semester)
 		folderExcel := filepath.Join("nilai_excel", jur.NamaJrs, semester)
 		os.MkdirAll(folderJSON, os.ModePerm)
@@ -133,8 +146,10 @@ func main() {
 			if mk.Cetak != "1" {
 				continue
 			}
+			replacer := strings.NewReplacer("/", "-", ":", "")
+			namaGabungan := fmt.Sprintf("%s %s %s", mk.Namamk, mk.Kelas, mk.Namadosen)
+			namaFile := replacer.Replace(namaGabungan)
 
-			namaFile := strings.ReplaceAll(mk.Namamk, "/", "-")
 			writeJSON(filepath.Join(folderJSON, namaFile+".json"), nilaiMK)
 			writeExcel(filepath.Join(folderExcel, namaFile+".xlsx"), nilaiMK)
 
@@ -148,14 +163,101 @@ func main() {
 				lastPercent = percent
 			}
 		}
-
 		fmt.Println()
-
-		fmt.Printf("[INFO] Jurusan %s: berhasil simpan %d MK dari %d MK, terlewat %d MK karena status cetak = 0\n", jur.NamaJrs, doneMK, totals, totals-doneMK)
-
+		fmt.Printf("[INFO] Jurusan %s: berhasil simpan %d MK dari %d MK, skip %d MK karena status cetak = 0\n", jur.NamaJrs, doneMK, totals, totals-doneMK)
 	}
 
 	fmt.Println("\n[INFO] Semua data berhasil disimpan di folder nilai & excel")
+}
+
+// --- LOGIN OTOMATIS (ambil PHPSESSID) ---
+func login(username, password string) bool {
+	req, _ := http.NewRequest("GET", baseURL+"/index.php", nil)
+	req.Header.Set("User-Agent", userAgents[rand.Intn(len(userAgents))])
+
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println("[ERROR] Gagal request index.php:", err)
+		return false
+	}
+	defer res.Body.Close()
+
+	// Ambil PHPSESSID awal
+	initialSession := ""
+	for _, c := range res.Cookies() {
+		if c.Name == "PHPSESSID" {
+			initialSession = c.Value
+		}
+	}
+	if initialSession == "" {
+		fmt.Println("[ERROR] PHPSESSID awal tidak ditemukan")
+		return false
+	}
+
+	// Generate hide_validation & IP random
+	hideValidation := generateValidation()
+	hideIP := getRandomIP()
+
+	// POST login
+	data := url.Values{}
+	data.Set("username", username)
+	data.Set("password", password)
+	data.Set("validation", hideValidation)
+	data.Set("hide_validation", hideValidation)
+	data.Set("hide_ipnya", hideIP)
+
+	req2, _ := http.NewRequest("POST", baseURL+"/ceklogin.php?h=", strings.NewReader(data.Encode()))
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req2.Header.Set("Cookie", "PHPSESSID="+initialSession)
+	req2.Header.Set("User-Agent", userAgents[rand.Intn(len(userAgents))])
+	req2.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req2.Header.Set("Referer", baseURL+"/index.php")
+
+	res2, err := client.Do(req2)
+	if err != nil {
+		fmt.Println("[ERROR] Gagal POST login:", err)
+		return false
+	}
+	defer res2.Body.Close()
+
+	// Ambil cookie baru dari response login
+	for _, c := range res2.Cookies() {
+		if c.Name == "PHPSESSID" {
+			cookie = "PHPSESSID=" + c.Value
+			fmt.Println("[INFO] Login berhasil!")
+			break
+		}
+	}
+
+	respBody, _ := io.ReadAll(res2.Body)
+	// fmt.Println("[DEBUG] login response:", string(respBody))
+	// fmt.Println("[DEBUG] cookie:", cookie)
+
+	return strings.Contains(string(respBody), `"success":true`)
+}
+
+// --- GENERATE HIDE_VALIDATION ---
+func generateValidation() string {
+	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+	rand.Seed(time.Now().UnixNano())
+	code := make([]byte, 3)
+	for i := range code {
+		code[i] = chars[rand.Intn(len(chars))]
+	}
+	return string(code)
+}
+
+// --- AMBIL IP PUBLIK RANDOM ---
+func getRandomIP() string {
+	resp, err := http.Get("https://api.ipify.org")
+	if err != nil {
+		fmt.Println("[WARN] Gagal ambil IP publik, pakai default")
+		return "182.8.179.9"
+	}
+	defer resp.Body.Close()
+	ip, _ := io.ReadAll(resp.Body)
+	return strings.TrimSpace(string(ip))
 }
 
 // --- Fungsi baru untuk ambil semester ---
