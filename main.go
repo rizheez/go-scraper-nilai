@@ -3,15 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"math/rand"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/valyala/fasthttp"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -20,7 +19,7 @@ var (
 	cookie  string
 )
 
-// User agent list (tidak berubah)
+// User agent list
 var userAgents = []string{
 	"Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
 	"Mozilla/5.0 (X11; Ubuntu; Linux x86_64) Gecko/20100101 Firefox/130.0",
@@ -70,31 +69,20 @@ type Nilai struct {
 }
 
 func main() {
-	// --- Input username & password ---
-
 	LoadConfig()
-	// fmt.Print(USERNAME)
-	// var username, password string
-	// fmt.Print("Username: " + USERNAME)
-	// fmt.Scan(&username)
-	// fmt.Print("Password: ")
-	// fmt.Scan(&password)
-	// fmt.Println("[INFO] BASE_URL:", BaseURL)
 	username := USERNAME
 	password := PASSWORD
 	baseURL = BaseURL
-	// --- LOGIN OTOMATIS ---
+
 	if !login(username, password) {
 		fmt.Println("[ERROR] Login gagal, cek username/password")
 		return
 	}
 	fmt.Println("[INFO] Login berhasil!")
 
-	// --- Ambil semester ---
 	semester := pilihSemester()
 	fmt.Println("[INFO] Semester dipilih:", semester)
 
-	// --- Load jurusan ---
 	cfgFile, err := os.ReadFile("jurusan.json")
 	if err != nil {
 		fmt.Println("[ERROR] Gagal baca jurusan.json:", err)
@@ -106,7 +94,6 @@ func main() {
 		return
 	}
 
-	// --- Proses scraping per jurusan ---
 	for _, jur := range jurusanList {
 		if jur.KodeJrs == "" {
 			continue
@@ -143,9 +130,6 @@ func main() {
 		lastPercent := 0
 		for _, mk := range mkList {
 			nilaiMK := getListNilai(mk.Infomk)
-			if mk.Cetak != "1" {
-				continue
-			}
 			replacer := strings.NewReplacer("/", "-", ":", "")
 			namaGabungan := fmt.Sprintf("%s %s %s", mk.Namamk, mk.Kelas, mk.Namadosen)
 			namaFile := replacer.Replace(namaGabungan)
@@ -170,74 +154,83 @@ func main() {
 	fmt.Println("\n[INFO] Semua data berhasil disimpan di folder nilai & excel")
 }
 
-// --- LOGIN OTOMATIS (ambil PHPSESSID) ---
 func login(username, password string) bool {
-	req, _ := http.NewRequest("GET", baseURL+"/index.php", nil)
+	req := fasthttp.AcquireRequest()
+	res := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(res)
+
+	// Pertama, buat permintaan untuk mendapatkan PHPSESSID awal
+	req.SetRequestURI(baseURL + "/index.php")
 	req.Header.Set("User-Agent", userAgents[rand.Intn(len(userAgents))])
 
-	client := &http.Client{}
-	res, err := client.Do(req)
-	if err != nil {
+	if err := fasthttp.Do(req, res); err != nil {
 		fmt.Println("[ERROR] Gagal request index.php:", err)
 		return false
 	}
-	defer res.Body.Close()
 
-	// Ambil PHPSESSID awal
+	// Ambil PHPSESSID dari respons
 	initialSession := ""
-	for _, c := range res.Cookies() {
-		if c.Name == "PHPSESSID" {
-			initialSession = c.Value
+	res.Header.VisitAllCookie(func(key, value []byte) {
+		if string(key) == "PHPSESSID" {
+			s := strings.SplitN(string(value), ";", 2)
+			initialSession = s[0]
 		}
-	}
+	})
+
 	if initialSession == "" {
 		fmt.Println("[ERROR] PHPSESSID awal tidak ditemukan")
 		return false
 	}
+	fmt.Println("[INFO] PHPSESSID awal:", initialSession)
 
 	// Generate hide_validation & IP random
 	hideValidation := generateValidation()
 	hideIP := getRandomIP()
 
 	// POST login
-	data := url.Values{}
-	data.Set("username", username)
-	data.Set("password", password)
-	data.Set("validation", hideValidation)
-	data.Set("hide_validation", hideValidation)
-	data.Set("hide_ipnya", hideIP)
+	form := url.Values{}
+	form.Set("username", username)
+	form.Set("password", password)
+	form.Set("validation", hideValidation)
+	form.Set("hide_validation", hideValidation)
+	form.Set("hide_ipnya", hideIP)
 
-	req2, _ := http.NewRequest("POST", baseURL+"/ceklogin.php?h=", strings.NewReader(data.Encode()))
-	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req2.Header.Set("Cookie", "PHPSESSID="+initialSession)
-	req2.Header.Set("User-Agent", userAgents[rand.Intn(len(userAgents))])
-	req2.Header.Set("X-Requested-With", "XMLHttpRequest")
-	req2.Header.Set("Referer", baseURL+"/index.php")
+	req.Reset()
+	req.SetRequestURI(baseURL + "/ceklogin.php?h=")
+	req.Header.SetMethod("POST")
+	req.Header.SetContentType("application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", userAgents[rand.Intn(len(userAgents))])
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("Referer", baseURL+"/index.php")
+	req.Header.Set("Cookie", "PHPSESSID="+initialSession)
+	req.SetBodyString(form.Encode())
 
-	res2, err := client.Do(req2)
-	if err != nil {
+	if err := fasthttp.Do(req, res); err != nil {
 		fmt.Println("[ERROR] Gagal POST login:", err)
 		return false
 	}
-	defer res2.Body.Close()
 
-	// Ambil cookie baru dari response login
-	for _, c := range res2.Cookies() {
-		if c.Name == "PHPSESSID" {
-			cookie = "PHPSESSID=" + c.Value
-			fmt.Println("[INFO] Login berhasil!")
-			break
+	// Ambil PHPSESSID baru dari respons
+	cookie = ""
+	res.Header.VisitAllCookie(func(key, value []byte) {
+		if string(key) == "PHPSESSID" {
+			s := strings.SplitN(string(value), ";", 2)
+			cookie = s[0]
 		}
+	})
+
+	if cookie == "" {
+		fmt.Println("[ERROR] PHPSESSID baru tidak ditemukan")
+		return false
 	}
 
-	respBody, _ := io.ReadAll(res2.Body)
-	// fmt.Println("[DEBUG] login response:", string(respBody))
-	// fmt.Println("[DEBUG] cookie:", cookie)
+	fmt.Println("[INFO] PHPSESSID baru:", cookie)
 
-	return strings.Contains(string(respBody), `"success":true`)
+	body := string(res.Body())
+	return strings.Contains(body, `"success":true`)
 }
 
-// --- GENERATE HIDE_VALIDATION ---
 func generateValidation() string {
 	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 	rand.Seed(time.Now().UnixNano())
@@ -248,37 +241,40 @@ func generateValidation() string {
 	return string(code)
 }
 
-// --- AMBIL IP PUBLIK RANDOM ---
 func getRandomIP() string {
-	resp, err := http.Get("https://api.ipify.org")
-	if err != nil {
+	req := fasthttp.AcquireRequest()
+	res := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(res)
+
+	req.SetRequestURI("https://api.ipify.org")
+	if err := fasthttp.Do(req, res); err != nil {
 		fmt.Println("[WARN] Gagal ambil IP publik, pakai default")
-		return "182.8.179.9"
+		return "182.8.179.20"
 	}
-	defer resp.Body.Close()
-	ip, _ := io.ReadAll(resp.Body)
-	return strings.TrimSpace(string(ip))
+	return strings.TrimSpace(string(res.Body()))
 }
 
-// --- Fungsi baru untuk ambil semester ---
 func pilihSemester() string {
-	req, _ := http.NewRequest("POST", baseURL+"/_modul/aksi_umum.php?act=pilih_smtthnakd", nil)
+	req := fasthttp.AcquireRequest()
+	res := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(res)
+
+	req.SetRequestURI(baseURL + "/_modul/aksi_umum.php?act=pilih_smtthnakd")
+	req.Header.SetMethod("POST")
 	setHeaders(req)
 
-	client := &http.Client{}
-	res, err := client.Do(req)
-	if err != nil {
+	if err := fasthttp.Do(req, res); err != nil {
 		fmt.Println("[ERROR] Gagal ambil semester:", err)
 		os.Exit(1)
 	}
-	defer res.Body.Close()
-	body, _ := io.ReadAll(res.Body)
 
 	var semList []struct {
 		Keterangan string `json:"keterangan"`
 		Smtthnakd  string `json:"smtthnakd"`
 	}
-	if err := json.Unmarshal(body, &semList); err != nil {
+	if err := json.Unmarshal(res.Body(), &semList); err != nil {
 		fmt.Println("[ERROR] Gagal parsing JSON semester:", err)
 		os.Exit(1)
 	}
@@ -299,49 +295,53 @@ func pilihSemester() string {
 	return semList[pilih-1].Smtthnakd
 }
 
-// --- Set prodi ---
 func setProdi(kodeProdi, kodePK, smthn string) error {
 	form := url.Values{}
 	form.Set("ps", kodeProdi)
 	form.Set("pk", kodePK)
 	form.Set("smthn", smthn)
 
-	req, _ := http.NewRequest("POST", baseURL+"/_modul/mod_prodi_smthn/aksi_prodi_smthn.php", strings.NewReader(form.Encode()))
-	setHeaders(req)
+	req := fasthttp.AcquireRequest()
+	res := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(res)
 
-	client := &http.Client{}
-	res, err := client.Do(req)
-	if err != nil {
+	req.SetRequestURI(baseURL + "/_modul/mod_prodi_smthn/aksi_prodi_smthn.php")
+	req.Header.SetMethod("POST")
+	setHeaders(req)
+	req.SetBodyString(form.Encode())
+
+	if err := fasthttp.Do(req, res); err != nil {
 		return err
 	}
-	defer res.Body.Close()
-	io.ReadAll(res.Body)
 	return nil
 }
 
-// --- Fungsi lain tetap sama ---
 func getRekapMK() *struct {
 	Total int          `json:"total"`
 	Rows  []MataKuliah `json:"rows"`
 } {
 	data := "page=1&rows=300&sort=hari&order=asc"
-	req, _ := http.NewRequest("POST", baseURL+"/_modul/mod_nilmk/aksi_nilmk.php?act=rekapNILMK", strings.NewReader(data))
-	setHeaders(req)
+	req := fasthttp.AcquireRequest()
+	res := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(res)
 
-	client := &http.Client{}
-	res, err := client.Do(req)
-	if err != nil {
+	req.SetRequestURI(baseURL + "/_modul/mod_nilmk/aksi_nilmk.php?act=rekapNILMK")
+	req.Header.SetMethod("POST")
+	setHeaders(req)
+	req.SetBodyString(data)
+
+	if err := fasthttp.Do(req, res); err != nil {
 		fmt.Println("[ERROR] ", err)
 		return nil
 	}
-	defer res.Body.Close()
-	body, _ := io.ReadAll(res.Body)
 
 	var resp struct {
 		Total int          `json:"total"`
 		Rows  []MataKuliah `json:"rows"`
 	}
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := json.Unmarshal(res.Body(), &resp); err != nil {
 		fmt.Println("[ERROR] Gagal parsing JSON:", err)
 		return nil
 	}
@@ -353,20 +353,23 @@ func getListNilai(infomk string) []Nilai {
 	form.Set("param", infomk)
 	form.Set("cetak", "1")
 
-	req, _ := http.NewRequest("POST", baseURL+"/_modul/mod_nilmk/aksi_nilmk.php?act=listNILMK", strings.NewReader(form.Encode()))
-	setHeaders(req)
+	req := fasthttp.AcquireRequest()
+	res := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(res)
 
-	client := &http.Client{}
-	res, err := client.Do(req)
-	if err != nil {
+	req.SetRequestURI(baseURL + "/_modul/mod_nilmk/aksi_nilmk.php?act=listNILMK")
+	req.Header.SetMethod("POST")
+	setHeaders(req)
+	req.SetBodyString(form.Encode())
+
+	if err := fasthttp.Do(req, res); err != nil {
 		fmt.Println("[ERROR] ", err)
 		return nil
 	}
-	defer res.Body.Close()
-	body, _ := io.ReadAll(res.Body)
 
 	var hasil []Nilai
-	if err := json.Unmarshal(body, &hasil); err != nil {
+	if err := json.Unmarshal(res.Body(), &hasil); err != nil {
 		fmt.Println("[ERROR] Gagal parsing JSON listNILMK:", err)
 		return nil
 	}
@@ -411,7 +414,7 @@ func writeExcel(path string, data []Nilai) {
 	}
 }
 
-func setHeaders(req *http.Request) {
+func setHeaders(req *fasthttp.Request) {
 	ua := userAgents[rand.Intn(len(userAgents))]
 	req.Header.Set("User-Agent", ua)
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
