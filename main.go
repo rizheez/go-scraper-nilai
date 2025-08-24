@@ -73,22 +73,26 @@ func main() {
 	// --- Input username & password ---
 
 	LoadConfig()
-	// fmt.Print(USERNAME)
-	// var username, password string
-	// fmt.Print("Username: " + USERNAME)
-	// fmt.Scan(&username)
-	// fmt.Print("Password: ")
-	// fmt.Scan(&password)
-	// fmt.Println("[INFO] BASE_URL:", BaseURL)
+
 	username := USERNAME
 	password := PASSWORD
 	baseURL = BaseURL
+	// --- LOAD COOKIE ---
+	loadCookie()
+
 	// --- LOGIN OTOMATIS ---
-	if !login(username, password) {
-		fmt.Println("[ERROR] Login gagal, cek username/password")
-		return
+	if cookie != "" && isSessionValid() {
+		fmt.Println("[INFO] Cookie masih valid, skip login")
+	} else {
+		fmt.Println("[INFO] Login ulang...")
+		if !login(username, password) {
+			fmt.Println("[ERROR] Login gagal, cek username/password")
+			return
+		}
+		saveCookie()
 	}
-	fmt.Println("[INFO] Login berhasil!")
+
+	fmt.Println("[INFO] Login Sebagai:", username)
 
 	// --- Ambil semester ---
 	semester := pilihSemester()
@@ -169,6 +173,40 @@ func main() {
 
 	fmt.Println("\n[INFO] Semua data berhasil disimpan di folder nilai & excel")
 }
+func isSessionValid() bool {
+	req, _ := http.NewRequest("GET", baseURL+"/media.php", nil)
+	setHeaders(req)
+
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println("[ERROR] Gagal cek session:", err)
+		return false
+	}
+	defer res.Body.Close()
+
+	body, _ := io.ReadAll(res.Body)
+	if strings.Contains(string(body), "login") || strings.Contains(string(body), "Username") {
+		return false
+	}
+	return true
+}
+
+// --- Load cookie dari file ---
+func loadCookie() {
+	data, err := os.ReadFile("cookie.txt")
+	if err == nil {
+		cookie = string(data)
+		fmt.Println("[INFO] Cookie ditemukan!")
+	}
+}
+
+// --- Simpan cookie ke file ---
+func saveCookie() {
+	if cookie != "" {
+		_ = os.WriteFile("cookie.txt", []byte(cookie), 0644)
+	}
+}
 
 // --- LOGIN OTOMATIS (ambil PHPSESSID) ---
 func login(username, password string) bool {
@@ -230,6 +268,7 @@ func login(username, password string) bool {
 		}
 	}
 
+	saveCookie()
 	respBody, _ := io.ReadAll(res2.Body)
 	// fmt.Println("[DEBUG] login response:", string(respBody))
 	// fmt.Println("[DEBUG] cookie:", cookie)
