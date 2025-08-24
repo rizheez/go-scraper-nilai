@@ -86,8 +86,8 @@ func main() {
 		saveCookie()
 	}
 
-	fmt.Println("[INFO] Login/session siap digunakan!")
-
+	fmt.Println("[INFO] Login Sebagai:", username)
+	time.Sleep(500 * time.Millisecond)
 	semester := pilihSemester()
 	fmt.Println("[INFO] Semester dipilih:", semester)
 
@@ -191,7 +191,7 @@ func loadCookie() {
 	data, err := os.ReadFile("cookie.txt")
 	if err == nil {
 		cookie = string(data)
-		fmt.Println("[INFO] Cookie ditemukan:", cookie)
+		fmt.Println("[INFO] Cookie ditemukan")
 	}
 }
 
@@ -230,12 +230,13 @@ func login(username, password string) bool {
 		fmt.Println("[ERROR] PHPSESSID awal tidak ditemukan")
 		return false
 	}
-	fmt.Println("[INFO] PHPSESSID awal:", initialSession)
+	// fmt.Println("[INFO] PHPSESSID awal:", initialSession)
 
 	// Generate hide_validation & IP random
 	hideValidation := generateValidation()
 	hideIP := getRandomIP()
 
+	fmt.Println("[INFO] Login sebagai:", username)
 	// POST login
 	form := url.Values{}
 	form.Set("username", username)
@@ -273,7 +274,7 @@ func login(username, password string) bool {
 		return false
 	}
 
-	fmt.Println("[INFO] PHPSESSID baru:", cookie)
+	// fmt.Println("[INFO] PHPSESSID baru:", cookie)
 	saveCookie()
 
 	body := string(res.Body())
