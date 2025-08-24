@@ -7,32 +7,35 @@ import (
 	"github.com/joho/godotenv"
 )
 
-var (
+// Config holds the application configuration
+type Config struct {
 	BaseURL  string
-	USERNAME string
-	PASSWORD string
-)
+	Username string
+	Password string
+}
 
-func LoadConfig() {
+// LoadConfig loads configuration from environment variables or .env file
+func LoadConfig() (*Config, error) {
 	// Load .env jika ada
 	if err := godotenv.Load(); err != nil {
 		fmt.Println("[WARN] .env tidak ditemukan, gunakan env sistem")
 	}
 
-	BaseURL = os.Getenv("BASE_URL")
-	USERNAME = os.Getenv("USER_SIAKAD")
-	PASSWORD = os.Getenv("PASSWORD_SIAKAD")
-	if BaseURL == "" {
-		fmt.Println("[ERROR] BASE_URL tidak ditemukan di .env atau env sistem")
-		os.Exit(1)
-	}
-	if USERNAME == "" {
-		fmt.Println("[ERROR] USERNAME tidak ditemukan di .env atau env sistem")
-		os.Exit(1)
-	}
-	if PASSWORD == "" {
-		fmt.Println("[ERROR] PASSWORD tidak ditemukan di .env atau env sistem")
-		os.Exit(1)
+	config := &Config{
+		BaseURL:  os.Getenv("BASE_URL"),
+		Username: os.Getenv("USER_SIAKAD"),
+		Password: os.Getenv("PASSWORD_SIAKAD"),
 	}
 
+	if config.BaseURL == "" {
+		return nil, fmt.Errorf("BASE_URL tidak ditemukan di .env atau env sistem")
+	}
+	if config.Username == "" {
+		return nil, fmt.Errorf("USER_SIAKAD tidak ditemukan di .env atau env sistem")
+	}
+	if config.Password == "" {
+		return nil, fmt.Errorf("PASSWORD_SIAKAD tidak ditemukan di .env atau env sistem")
+	}
+
+	return config, nil
 }
