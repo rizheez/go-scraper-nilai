@@ -74,11 +74,19 @@ func main() {
 	password := PASSWORD
 	baseURL = BaseURL
 
-	if !login(username, password) {
-		fmt.Println("[ERROR] Login gagal, cek username/password")
-		return
+	loadCookie()
+	if cookie != "" && isSessionValid() {
+		fmt.Println("[INFO] Cookie masih valid, skip login")
+	} else {
+		fmt.Println("[INFO] Login ulang...")
+		if !login(username, password) {
+			fmt.Println("[ERROR] Login gagal, cek username/password")
+			return
+		}
+		saveCookie()
 	}
-	fmt.Println("[INFO] Login berhasil!")
+
+	fmt.Println("[INFO] Login/session siap digunakan!")
 
 	semester := pilihSemester()
 	fmt.Println("[INFO] Semester dipilih:", semester)
@@ -154,6 +162,46 @@ func main() {
 	fmt.Println("\n[INFO] Semua data berhasil disimpan di folder nilai & excel")
 }
 
+// --- Cek apakah session masih valid ---
+func isSessionValid() bool {
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.SetRequestURI(baseURL + "/media.php")
+	req.Header.SetMethod("GET")
+	setHeaders(req)
+
+	if err := fasthttp.Do(req, resp); err != nil {
+		fmt.Println("[ERROR] Gagal cek session:", err)
+		return false
+	}
+
+	// kalau halaman login muncul berarti session invalid
+	body := string(resp.Body())
+	if strings.Contains(body, "login") || strings.Contains(body, "Username") {
+		return false
+	}
+	return true
+}
+
+// --- Load cookie dari file ---
+func loadCookie() {
+	data, err := os.ReadFile("cookie.txt")
+	if err == nil {
+		cookie = string(data)
+		fmt.Println("[INFO] Cookie ditemukan:", cookie)
+	}
+}
+
+// --- Simpan cookie ke file ---
+func saveCookie() {
+	if cookie != "" {
+		_ = os.WriteFile("cookie.txt", []byte(cookie), 0644)
+	}
+}
+
 func login(username, password string) bool {
 	req := fasthttp.AcquireRequest()
 	res := fasthttp.AcquireResponse()
@@ -226,6 +274,7 @@ func login(username, password string) bool {
 	}
 
 	fmt.Println("[INFO] PHPSESSID baru:", cookie)
+	saveCookie()
 
 	body := string(res.Body())
 	return strings.Contains(body, `"success":true`)
