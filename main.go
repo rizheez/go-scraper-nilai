@@ -147,7 +147,7 @@ func main() {
 	elapsed := time.Since(start)
 	fmt.Println()
 	fmt.Println("=====================================================================")
-	log(LogInfo, "Semua data berhasil disimpan di folder nilai & excel")
+	log(LogInfo, "Semua data berhasil disimpan di folder")
 	logf(LogInfo, "Waktu yang dibutuhkan: %s", formatDuration(elapsed))
 	fmt.Println("=====================================================================")
 }
