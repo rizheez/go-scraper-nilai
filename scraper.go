@@ -3,16 +3,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"math/rand"
-	"net/http"
-	"net/url"
 	"os"
 	"strings"
+
+	"github.com/valyala/fasthttp"
 )
 
 type Scraper struct {
-	client  *http.Client
+	client  *fasthttp.Client
 	baseURL string
 	cookie  string
 	config  *Config
@@ -20,17 +19,20 @@ type Scraper struct {
 
 func NewScraper(config *Config) *Scraper {
 	return &Scraper{
-		client:  &http.Client{},
+		client:  &fasthttp.Client{},
 		baseURL: config.BaseURL,
 		config:  config,
 	}
 }
 
-func (s *Scraper) DoRequest(method, endpoint string, body io.Reader) ([]byte, error) {
-	req, err := http.NewRequest(method, s.baseURL+endpoint, body)
-	if err != nil {
-		return nil, fmt.Errorf("gagal membuat request: %w", err)
-	}
+func (s *Scraper) DoRequest(method, endpoint string, body []byte) ([]byte, error) {
+	req := fasthttp.AcquireRequest()
+	res := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(res)
+
+	req.SetRequestURI(s.baseURL + endpoint)
+	req.Header.SetMethod(method)
 
 	ua := userAgents[rand.Intn(len(userAgents))]
 	req.Header.Set(HeaderUserAgent, ua)
@@ -38,27 +40,28 @@ func (s *Scraper) DoRequest(method, endpoint string, body io.Reader) ([]byte, er
 	req.Header.Set(HeaderReferer, s.baseURL+MediaEndpoint)
 	req.Header.Set(HeaderOrigin, s.baseURL)
 	req.Header.Set(HeaderAccept, AcceptJSON)
-	if body != nil {
+
+	if len(body) > 0 {
+		req.SetBody(body)
 		req.Header.Set(HeaderContentType, ContentTypeForm+CharsetUTF8)
 	}
 	if s.cookie != "" {
 		req.Header.Set(HeaderCookie, s.cookie)
 	}
 
-	res, err := s.client.Do(req)
-	if err != nil {
+	if err := s.client.Do(req, res); err != nil {
 		return nil, fmt.Errorf("gagal kirim request: %w", err)
 	}
-	defer res.Body.Close()
 
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("request gagal status: %d", res.StatusCode)
+	if res.StatusCode() != fasthttp.StatusOK {
+		return nil, fmt.Errorf("request gagal status: %d", res.StatusCode())
 	}
-	return io.ReadAll(res.Body)
+
+	return res.Body(), nil
 }
 
 func (s *Scraper) IsSessionValid() bool {
-	body, err := s.DoRequest(GET, MediaEndpoint, nil)
+	body, err := s.DoRequest(fasthttp.MethodGet, MediaEndpoint, nil)
 	if err != nil {
 		logf(LogError, "Gagal cek session: %v", err)
 		return false
@@ -67,17 +70,18 @@ func (s *Scraper) IsSessionValid() bool {
 }
 
 func (s *Scraper) SetProdi(kodeProdi, kodePK, smthn string) error {
-	form := url.Values{}
-	form.Set(FormPS, kodeProdi)
-	form.Set(FormPK, kodePK)
-	form.Set(FormSMTHN, smthn)
-	_, err := s.DoRequest(POST, "/_modul/mod_prodi_smthn/aksi_prodi_smthn.php", strings.NewReader(form.Encode()))
+	form := buildForm(map[string]string{
+		FormPS:    kodeProdi,
+		FormPK:    kodePK,
+		FormSMTHN: smthn,
+	})
+	_, err := s.DoRequest(fasthttp.MethodPost, "/_modul/mod_prodi_smthn/aksi_prodi_smthn.php", form)
 	return err
 }
 
 func (s *Scraper) GetRekapMK() (*RekapMKResponse, error) {
-	data := "page=1&rows=300&sort=hari&order=asc"
-	body, err := s.DoRequest(POST, "/_modul/mod_nilmk/aksi_nilmk.php?act=rekapNILMK", strings.NewReader(data))
+	data := []byte("page=1&rows=300&sort=hari&order=asc")
+	body, err := s.DoRequest(fasthttp.MethodPost, "/_modul/mod_nilmk/aksi_nilmk.php?act=rekapNILMK", data)
 	if err != nil {
 		return nil, err
 	}
@@ -89,10 +93,11 @@ func (s *Scraper) GetRekapMK() (*RekapMKResponse, error) {
 }
 
 func (s *Scraper) GetListNilai(infomk string) ([]Nilai, error) {
-	form := url.Values{}
-	form.Set(FormParam, infomk)
-	form.Set(FormCetak, CetakValue)
-	body, err := s.DoRequest(POST, "/_modul/mod_nilmk/aksi_nilmk.php?act=listNILMK", strings.NewReader(form.Encode()))
+	form := buildForm(map[string]string{
+		FormParam: infomk,
+		FormCetak: CetakValue,
+	})
+	body, err := s.DoRequest(fasthttp.MethodPost, "/_modul/mod_nilmk/aksi_nilmk.php?act=listNILMK", form)
 	if err != nil {
 		return nil, err
 	}
@@ -103,9 +108,20 @@ func (s *Scraper) GetListNilai(infomk string) ([]Nilai, error) {
 	return hasil, nil
 }
 
+// --- util form encoder ---
+func buildForm(values map[string]string) []byte {
+	form := ""
+	for k, v := range values {
+		if form != "" {
+			form += "&"
+		}
+		form += fmt.Sprintf("%s=%s", k, v)
+	}
+	return []byte(form)
+}
+
 // loadJurusan loads the jurusan data from file
 func loadJurusan() (Jurusan, error) {
-	// baca file jurusan.json (atau bisa juga dari API kalau ada)
 	data, err := os.ReadFile(JurusanFile)
 	if err != nil {
 		return Jurusan{}, fmt.Errorf("gagal baca %s: %w", JurusanFile, err)
@@ -120,7 +136,6 @@ func loadJurusan() (Jurusan, error) {
 		return Jurusan{}, fmt.Errorf("tidak ada jurusan yang tersedia")
 	}
 
-	// tampilkan daftar
 	fmt.Println()
 	fmt.Println("=================================")
 	log(LogInfo, "Daftar Jurusan:")
@@ -129,29 +144,15 @@ func loadJurusan() (Jurusan, error) {
 		logf(LogInfo, "[%d] %s", i+1, j.NamaJrs)
 	}
 
-	// pilih input
 	var selection int
 	fmt.Printf("[INFO] Pilih jurusan (nomor): ")
 	_, err = fmt.Scan(&selection)
 	if err != nil {
 		return Jurusan{}, fmt.Errorf("gagal membaca input: %w", err)
 	}
-
 	if selection < 1 || selection > len(jurusanList) {
 		return Jurusan{}, fmt.Errorf("pilihan invalid: %d", selection)
 	}
 
-	// return jurusan terpilih
 	return jurusanList[selection-1], nil
-	// cfgFile, err := os.ReadFile(JurusanFile)
-	// if err != nil {
-	// 	logf(LogError, "Gagal baca %s: %v", JurusanFile, err)
-	// 	return nil, fmt.Errorf("gagal baca %s: %w", JurusanFile, err)
-	// }
-	// var jurusanList []Jurusan
-	// if err := json.Unmarshal(cfgFile, &jurusanList); err != nil {
-	// 	logf(LogError, "Gagal parsing JSON: %v", err)
-	// 	return nil, fmt.Errorf("gagal parsing JSON: %w", err)
-	// }
-	// return jurusanList, nil
 }

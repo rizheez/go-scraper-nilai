@@ -2,13 +2,12 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"math/rand"
-	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/valyala/fasthttp"
 )
 
 func handleAuthentication(scraper *Scraper) error {
@@ -32,18 +31,19 @@ func handleAuthentication(scraper *Scraper) error {
 }
 
 func (s *Scraper) Login(username, password string) bool {
-	res, err := s.client.Get(s.baseURL + IndexEndpoint)
-	if err != nil {
+	req := fasthttp.AcquireRequest()
+	res := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(res)
+
+	req.SetRequestURI(s.baseURL + IndexEndpoint)
+	req.Header.SetMethod(fasthttp.MethodGet)
+
+	if err := s.client.Do(req, res); err != nil {
 		return false
 	}
-	defer res.Body.Close()
 
-	session := ""
-	for _, c := range res.Cookies() {
-		if c.Name == CookiePHPSESSID {
-			session = c.Value
-		}
-	}
+	session := string(res.Header.PeekCookie(CookiePHPSESSID))
 	if session == "" {
 		return false
 	}
@@ -51,34 +51,37 @@ func (s *Scraper) Login(username, password string) bool {
 	hideValidation := generateValidation()
 	hideIP := getRandomIP()
 
-	data := url.Values{}
-	data.Set(FormUsername, username)
-	data.Set(FormPassword, password)
-	data.Set(FormValidation, hideValidation)
-	data.Set(FormHideValidation, hideValidation)
-	data.Set(FormHideIP, hideIP)
+	data := buildForm(map[string]string{
+		FormUsername:       username,
+		FormPassword:       password,
+		FormValidation:     hideValidation,
+		FormHideValidation: hideValidation,
+		FormHideIP:         hideIP,
+	})
 
-	req, _ := http.NewRequest(POST, s.baseURL+LoginEndpoint, strings.NewReader(data.Encode()))
+	req.Reset()
+	req.SetRequestURI(s.baseURL + LoginEndpoint)
+	req.Header.SetMethod(fasthttp.MethodPost)
+	req.SetBody(data)
+
 	ua := userAgents[rand.Intn(len(userAgents))]
 	req.Header.Set(HeaderUserAgent, ua)
 	req.Header.Set(HeaderContentType, ContentTypeForm)
 	req.Header.Set(HeaderCookie, CookiePHPSESSID+"="+session)
 	req.Header.Set(HeaderXRequestedWith, XMLHttpRequest)
 
-	resp, err := s.client.Do(req)
-	if err != nil {
+	if err := s.client.Do(req, res); err != nil {
 		return false
 	}
-	defer resp.Body.Close()
 
-	for _, c := range resp.Cookies() {
-		if c.Name == CookiePHPSESSID {
-			s.cookie = CookiePHPSESSID + "=" + c.Value
-			cookie = s.cookie
-		}
+	cookies := res.Header.PeekCookie(CookiePHPSESSID)
+	if len(cookies) > 0 {
+		trim := strings.SplitN(string(cookies), ";", 2)
+		s.cookie = trim[0]
+		cookie = s.cookie
 	}
 
-	body, _ := io.ReadAll(resp.Body)
+	body := res.Body()
 	return strings.Contains(string(body), `"success":true`)
 }
 
@@ -92,28 +95,19 @@ func generateValidation() string {
 	return string(code)
 }
 
-// --- AMBIL IP PUBLIK RANDOM ---
+// --- Ambil IP publik random ---
 func getRandomIP() string {
-	resp, err := http.Get("https://api.ipify.org")
-	if err != nil {
+	status, body, err := fasthttp.Get(nil, "https://api.ipify.org")
+	if err != nil || status != fasthttp.StatusOK {
 		log(LogWarn, "Gagal ambil IP publik, pakai default")
 		return DefaultIP
 	}
-	defer resp.Body.Close()
-
-	ip, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log(LogWarn, "Gagal baca response IP publik, pakai default")
-		return DefaultIP
-	}
-
-	return strings.TrimSpace(string(ip))
+	return strings.TrimSpace(string(body))
 }
 
 func loadCookie() error {
 	data, err := os.ReadFile(CookieFile)
 	if err != nil {
-		// It's okay if the file doesn't exist, just return nil
 		if os.IsNotExist(err) {
 			return nil
 		}
@@ -124,7 +118,6 @@ func loadCookie() error {
 	return nil
 }
 
-// --- Simpan cookie ke file ---
 func saveCookie() error {
 	if cookie != "" {
 		if err := os.WriteFile(CookieFile, []byte(cookie), 0644); err != nil {

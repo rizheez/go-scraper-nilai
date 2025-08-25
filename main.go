@@ -103,7 +103,7 @@ func main() {
 	// --- Input username & password ---
 	config, err := LoadConfig()
 
-	clearScreen()
+	// clearScreen()
 	fmt.Println("=================================")
 	logf(LogWelcome, "Scraper Nilai Akademik")
 	fmt.Println("=================================")
