@@ -132,17 +132,61 @@ func main() {
 	logf(LogInfo, "Semester dipilih: %s", semester)
 	fmt.Println()
 	// --- Load jurusan ---
-	jurusanList, err := loadJurusan()
+	jurusan, err := loadJurusan()
 	if err != nil {
 		logf(LogError, "Gagal load jurusan: %v", err)
 		return
 	}
 	fmt.Println()
-	start := time.Now()
-	// --- Proses scraping per jurusan ---
-	if err := processJurusan(scraper, jurusanList, semester); err != nil {
-		logf(LogError, "Gagal proses jurusan: %v", err)
+
+	// --- Pilih jenis scraping ---
+	fmt.Println("=================================")
+	log(LogInfo, "Pilih jenis scraping:")
+	fmt.Println("=================================")
+	logf(LogInfo, "[1] Process Jurusan (Scrape Nilai Mata Kuliah)")
+	logf(LogInfo, "[2] Process Mahasiswa (Scrape Data Mahasiswa)")
+	logf(LogInfo, "[3] Process Keduanya")
+	fmt.Println("=================================")
+
+	var pilihan int
+	fmt.Printf("[INFO] Pilih opsi (1-3): ")
+	_, err = fmt.Scan(&pilihan)
+	if err != nil {
+		logf(LogError, "Gagal membaca input: %v", err)
 		return
+	}
+
+	if pilihan < 1 || pilihan > 3 {
+		logf(LogError, "Pilihan invalid: %d. Pilih antara 1-3", pilihan)
+		return
+	}
+
+	fmt.Println()
+	start := time.Now()
+	// --- Proses scraping sesuai pilihan ---
+	switch pilihan {
+	case 1:
+		logf(LogInfo, "Memulai scraping Nilai Mata Kuliah...")
+		if err := processJurusan(scraper, jurusan, semester); err != nil {
+			logf(LogError, "Gagal proses jurusan: %v", err)
+			return
+		}
+	case 2:
+		logf(LogInfo, "Memulai scraping Data Mahasiswa...")
+		if err := processMHS(scraper, jurusan, semester); err != nil {
+			logf(LogError, "Gagal proses Mahasiswa: %v", err)
+			return
+		}
+	case 3:
+		logf(LogInfo, "Memulai scraping Keduanya...")
+		if err := processJurusan(scraper, jurusan, semester); err != nil {
+			logf(LogError, "Gagal proses jurusan: %v", err)
+			return
+		}
+		if err := processMHS(scraper, jurusan, semester); err != nil {
+			logf(LogError, "Gagal proses Mahasiswa: %v", err)
+			return
+		}
 	}
 	elapsed := time.Since(start)
 	fmt.Println()

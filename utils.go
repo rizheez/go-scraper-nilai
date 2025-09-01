@@ -61,7 +61,10 @@ func updateProgress(label string, done, total int, lastPercent *int) {
 	if percent-*lastPercent >= 5 || percent == 100 {
 		barLen := ProgressBarLength
 		pos := percent * barLen / 100
-		bar := strings.Repeat("=", pos) + strings.Repeat(" ", barLen-pos)
+
+		// pakai blok penuh █ dan filler spasi
+		bar := strings.Repeat("█", pos) + strings.Repeat(" ", barLen-pos)
+
 		fmt.Printf("\r[PROGRESS] %s: [%s] %d%% (%d/%d)", label, bar, percent, done, total)
 		*lastPercent = percent
 	}

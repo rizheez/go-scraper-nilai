@@ -57,13 +57,27 @@ func (s *Scraper) DoRequest(method, endpoint string, body io.Reader) ([]byte, er
 	return io.ReadAll(res.Body)
 }
 
+func (s *Scraper) GetRekapMHS() (*RekapMHSResponse, error) {
+	data := "page=1&rows=500&"
+	body, err := s.DoRequest(POST, "/_modul/mod_datamhs/aksi_datamhs.php?act=list", strings.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	var resp RekapMHSResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 func (s *Scraper) IsSessionValid() bool {
 	body, err := s.DoRequest(GET, MediaEndpoint, nil)
 	if err != nil {
 		logf(LogError, "Gagal cek session: %v", err)
 		return false
 	}
-	return !(strings.Contains(string(body), "login") || strings.Contains(string(body), "Username"))
+	// logf(LogInfo, "Response Body : %s", string(body))
+	return !(strings.Contains(string(body), "window.location = 'index.php'") || strings.Contains(string(body), "login") || strings.Contains(string(body), "Username"))
 }
 
 func (s *Scraper) SetProdi(kodeProdi, kodePK, smthn string) error {
