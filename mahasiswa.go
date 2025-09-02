@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/xuri/excelize/v2"
 )
@@ -99,12 +100,26 @@ func writeExcelMHS(path string, data []Mahasiswa) error {
 	xlsx := excelize.NewFile()
 	sheet := "Sheet1"
 
-	// Define headers for student data
+	textStyle, err := xlsx.NewStyle(&excelize.Style{
+		NumFmt: 49,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Define headers
 	headers := []string{
-		"NIM", "Nama", "Jurusan",
-		"NIK", "Program Studi", "Angkatan",
-		"Tempat Lahir", "Tanggal Lahir", "Gender", "Agama",
-		"Email", "HP", "Alamat", "Status", "IPK", "SKS Total",
+		"nim", "nama_mahasiswa", "jenis_kelamin", "tempat_lahir", "tanggal_lahir",
+		"id_agama", "nik", "nisn", "kewarganegaraan", "kelurahan", "id_wilayah",
+		"penerima_kps", "nama_ibu_kandung", "id_jalur_daftar", "tanggal_daftar",
+		"id_pembiayaan", "biaya_masuk", "npwp", "jalan", "dusun", "rt", "rw",
+		"kode_pos", "id_jenis_tinggal", "id_alat_transportasi", "telepon",
+		"handphone", "email", "nomor_kps", "nik_ayah", "nama_ayah",
+		"tanggal_lahir_ayah", "id_pendidikan_ayah", "id_pekerjaan_ayah",
+		"id_penghasilan_ayah", "nik_ibu", "tanggal_lahir_ibu", "id_pendidikan_ibu",
+		"id_pekerjaan_ibu", "id_penghasilan_ibu", "nama_wali", "tanggal_lahir_wali",
+		"id_pendidikan_wali", "id_pekerjaan_wali", "id_penghasilan_wali",
+		"id_kebutuhan_khusus_mahasiswa", "id_kebutuhan_khusus_ayah", "id_kebutuhan_khusus_ibu",
 	}
 
 	// Set headers
@@ -116,32 +131,103 @@ func writeExcelMHS(path string, data []Mahasiswa) error {
 	// Set data rows
 	for i, mhs := range data {
 		row := i + 2
+		tanggalLahir, _ := parseDate(mhs.TanggalLahir)
+		// tanggalMasuk, _ := parseDate(mhs.TanggalMasuk)
+		tanggalLahirAyah := mhs.TanggalLahirAyah
+		tanggalLahirIbu := mhs.TanggalLahirIbu
+		if mhs.TanggalLahirAyah != "" {
+			tanggalLahirAyah, _ = parseDate(mhs.TanggalLahirAyah)
+		}
+		if mhs.TanggalLahirIbu != "" {
+			tanggalLahirIbu, _ = parseDate(mhs.TanggalLahirIbu)
+		}
+
 		vals := []interface{}{
-			mhs.NIM,
-			mhs.Nama,
-			mhs.NamaJrs,
-			mhs.NoKTP,
-			mhs.NamaPK,
-			mhs.TanggalMasuk[:4], // Extract year from date
-			mhs.TempatLahir,
-			mhs.TanggalLahir,
-			mhs.Gender,
-			mhs.NamaAgama,
-			mhs.Email,
-			mhs.HP1,
-			mhs.AlamatSurat1,
-			mhs.StatusMhsKet,
-			mhs.IPK,
-			mhs.SKSTotal,
+			mhs.NIM,             // nim
+			mhs.Nama,            // nama_mahasiswa
+			mhs.Gender,          // jenis_kelamin
+			mhs.TempatLahir,     // tempat_lahir
+			tanggalLahir,        // tanggal_lahir
+			mhs.KodeAgama,       // id_agama
+			mhs.NoKTP,           // nik
+			mhs.ASNIMMSMHS,      // nisn
+			"ID",                // kewarganegaraan
+			mhs.Kelurahan,       // kelurahan
+			mhs.IDWilayah,       // id_wilayah
+			mhs.IDKPS,           // penerima_kps
+			mhs.NamaIbu,         // nama_ibu_kandung
+			mhs.IDJalurMasuk,    // id_jalur_daftar
+			mhs.TanggalMasuk,    // tanggal_daftar
+			mhs.IDPembiayaan,    // id_pembiayaan
+			mhs.BiayaMasuk,      // biaya_masuk
+			mhs.IdNPWPMhs,       // npwp
+			mhs.Jalan,           // jalan
+			mhs.Dusun,           // dusun
+			mhs.RT,              // rt
+			mhs.RW,              // rw
+			mhs.KodePos,         // kode_pos
+			mhs.IDJnsTinggal,    // id_jenis_tinggal
+			mhs.IDAlatTransport, // id_alat_transportasi
+			mhs.Telepon,         // telepon
+			"0" + mhs.HP1,       // handphone
+			mhs.Email,           // email
+			"",                  // nomor_kps
+			mhs.NikAyah,         // nik_ayah
+			mhs.NamaAyah,        // nama_ayah
+			tanggalLahirAyah,
+			mhs.IdDidikAyah,
+			mhs.IdKerjaAyah,
+			mhs.IdPenghasilanAyah,
+			mhs.NikIbu,
+			tanggalLahirIbu,
+			mhs.IdDidikIbu,
+			mhs.IdKerjaIbu,
+			mhs.IdPenghasilanIbu,
+			"", // nama_wali
+			"", // tanggal_lahir_wali
+			0,  // id_pendidikan_wali
+			0,  // id_pekerjaan_wali
+			0,  // id_penghasilan_wali
+			0,  // id_kebutuhan_khusus_mahasiswa
+			0,  // id_kebutuhan_khusus_ayah
+			0,  // id_kebutuhan_khusus_ibu
 		}
 
 		for j, v := range vals {
 			cell, _ := excelize.CoordinatesToCellName(j+1, row)
 			xlsx.SetCellValue(sheet, cell, v)
+
+			if j == 0 || j == 6 || j == 7 || j == 25 || j == 26 || j == 29 || j == 34 {
+				xlsx.SetCellStyle(sheet, cell, cell, textStyle)
+			}
 		}
 	}
 
 	return xlsx.SaveAs(path)
+}
+
+func parseDate(date string) (string, error) {
+	if date == "" {
+		return "", nil
+	}
+	layouts := []string{
+		"15-01-2006",
+		"2006-01-20",
+	}
+	var t time.Time
+	var err error
+	for _, layout := range layouts {
+		t, err = time.Parse(layout, date)
+		if err == nil {
+			return t.Format("2006-01-20"), nil
+		}
+	}
+	return "", err
+	// t, err := time.Parse("02-01-2006", date)
+	// if err != nil {
+	// 	return "", err
+	// }
+	// return t.Format("2006-01-02"), nil
 }
 
 // filterMahasiswaByYear filters mahasiswa based on enrollment year
