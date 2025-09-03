@@ -183,3 +183,4 @@ func loadJurusan() (Jurusan, error) {
 	// }
 	// return jurusanList, nil
 }
+// no changes
