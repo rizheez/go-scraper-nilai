@@ -57,6 +57,20 @@ func (s *Scraper) DoRequest(method, endpoint string, body io.Reader) ([]byte, er
 	return io.ReadAll(res.Body)
 }
 
+func (s *Scraper) GetBobotMK(fak, kodeProdi, kodePK, kls, kmk string) (Bobot, error) {
+	data := "fak=" + fak + "&jrs=" + kodeProdi + "&prg=" + kodePK + "&kls=" + kls + "&kmk=" + kmk
+	body, err := s.DoRequest(POST, "/_modul/mod_nilmk/aksi_nilmk.php?act=loadBOBOT", strings.NewReader(data))
+	if err != nil {
+		return Bobot{}, err
+	}
+	var bobotMK Bobot
+	if err := json.Unmarshal(body, &bobotMK); err != nil {
+		return Bobot{}, err
+	}
+	return bobotMK, nil
+
+}
+
 func (s *Scraper) GetRekapMHS() (*RekapMHSResponse, error) {
 	data := "page=1&rows=500&"
 	body, err := s.DoRequest(POST, "/_modul/mod_datamhs/aksi_datamhs.php?act=list", strings.NewReader(data))

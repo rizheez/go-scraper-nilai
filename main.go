@@ -58,6 +58,7 @@ const (
 	DefaultIP  = "182.8.179.9"
 	RegValue   = "REG"
 	CetakValue = "1"
+	FakValue   = "1" // Default faculty value
 
 	// Excel headers
 	ExcelNIM       = "Nim"

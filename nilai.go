@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/xuri/excelize/v2"
@@ -75,14 +76,37 @@ func scrapeMK(scraper *Scraper, mk MataKuliah, folderJSON, folderExcel string) {
 		logf(LogError, "Gagal ambil nilai MK %s: %v", mk.Namamk, err)
 		return
 	}
+	infomk := strings.Split(mk.Infomk, "#")
+	fak := infomk[0]
+	// Get bobot data
+	bobotData, err := scraper.GetBobotMK(fak, mk.KodeJrs, mk.KodePK, mk.Kelas, mk.KodeMK)
+	if err != nil {
+		logf(LogWarn, "Gagal ambil bobot MK %s: %v", mk.Namamk, err)
+		// Continue with empty bobot data
+		bobotData = Bobot{}
+	}
 
 	namaFile := sanitizeFilename(fmt.Sprintf("%s R%s %s", mk.Namamk, mk.Kelas, mk.Namadosen))
 
+	// Write nilai data
 	if err := writeJSON(filepath.Join(folderJSON, namaFile+".json"), nilai); err != nil {
-		logf(LogError, "Gagal tulis JSON: %v", err)
+		logf(LogError, "Gagal tulis JSON nilai: %v", err)
 	}
 	if err := writeExcel(filepath.Join(folderExcel, namaFile+".xlsx"), nilai); err != nil {
-		logf(LogError, "Gagal tulis Excel: %v", err)
+		logf(LogError, "Gagal tulis Excel nilai: %v", err)
+	}
+
+	// Write bobot data
+	bobotMK := BobotMK{
+		MataKuliah: mk,
+		Bobot:      bobotData,
+	}
+	namaFileBobot := sanitizeFilename(fmt.Sprintf("%s R%s %s_bobot", mk.Namamk, mk.Kelas, mk.Namadosen))
+	if err := writeJSON(filepath.Join(folderJSON, namaFileBobot+".json"), bobotMK); err != nil {
+		logf(LogError, "Gagal tulis JSON bobot: %v", err)
+	}
+	if err := writeBobotExcel(filepath.Join(folderExcel, namaFileBobot+".xlsx"), bobotMK); err != nil {
+		logf(LogError, "Gagal tulis Excel bobot: %v", err)
 	}
 }
 
@@ -112,5 +136,45 @@ func writeExcel(path string, data []Nilai) error {
 			f.SetCellValue(sheet, cell, v)
 		}
 	}
+	return f.SaveAs(path)
+}
+
+func writeBobotExcel(path string, data BobotMK) error {
+	f := excelize.NewFile()
+	sheet := "Sheet1"
+
+	// Set mata kuliah information headers
+	headers := []string{"Mata Kuliah", "Kelas", "Dosen", "Kode MK", "Kode Prodi", "Kode PK"}
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(sheet, cell, h)
+	}
+
+	// Set mata kuliah information values
+	mkVals := []interface{}{data.MataKuliah.Namamk, data.MataKuliah.Kelas, data.MataKuliah.Namadosen, data.MataKuliah.KodeMK, data.MataKuliah.KodeJrs, data.MataKuliah.KodePK}
+	for i, v := range mkVals {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 2)
+		f.SetCellValue(sheet, cell, v)
+	}
+
+	// Add bobot headers starting from row 4
+	f.SetCellValue(sheet, "A4", "Bobot (%)")
+
+	// Add bobot data starting from row 5
+	bobotComponents := []string{"Hadir", "Projek", "Quiz", "Tugas", "UTS", "UAS"}
+	bobotValues := []string{data.Bobot.Hadir, data.Bobot.Projek, data.Bobot.Quiz, data.Bobot.Tugas, data.Bobot.UTS, data.Bobot.UAS}
+	for i, component := range bobotComponents {
+
+		// Set component name in column A
+		cell, _ := excelize.CoordinatesToCellName(i+1, 5)
+		f.SetCellValue(sheet, cell, component)
+		// Set bobot value in column B
+	}
+	for i, value := range bobotValues {
+
+		cell, _ := excelize.CoordinatesToCellName(i+1, 6)
+		f.SetCellValue(sheet, cell, value)
+	}
+
 	return f.SaveAs(path)
 }

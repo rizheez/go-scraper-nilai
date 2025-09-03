@@ -109,17 +109,17 @@ func writeExcelMHS(path string, data []Mahasiswa) error {
 
 	// Define headers
 	headers := []string{
-		"nim", "nama_mahasiswa", "jenis_kelamin", "tempat_lahir", "tanggal_lahir",
-		"id_agama", "nik", "nisn", "kewarganegaraan", "kelurahan", "id_wilayah",
-		"penerima_kps", "nama_ibu_kandung", "id_jalur_daftar", "tanggal_daftar",
-		"id_pembiayaan", "biaya_masuk", "npwp", "jalan", "dusun", "rt", "rw",
-		"kode_pos", "id_jenis_tinggal", "id_alat_transportasi", "telepon",
-		"handphone", "email", "nomor_kps", "nik_ayah", "nama_ayah",
-		"tanggal_lahir_ayah", "id_pendidikan_ayah", "id_pekerjaan_ayah",
-		"id_penghasilan_ayah", "nik_ibu", "tanggal_lahir_ibu", "id_pendidikan_ibu",
-		"id_pekerjaan_ibu", "id_penghasilan_ibu", "nama_wali", "tanggal_lahir_wali",
-		"id_pendidikan_wali", "id_pekerjaan_wali", "id_penghasilan_wali",
-		"id_kebutuhan_khusus_mahasiswa", "id_kebutuhan_khusus_ayah", "id_kebutuhan_khusus_ibu",
+		"NIM", "Nama", "Tempat Lahir", "Tanggal Lahir", "Jenis Kelamin",
+		"NIK", "Agama", "NISN", "Jalur Pendaftaran", "NPWP",
+		"Kewarganegaraan", "Jenis Pendaftaran", "Tanggal Masuk Kuliah", "Mulai Semester", "Jalan",
+		"RT", "RW", "Nama Dusun", "Kelurahan", "Kecamatan",
+		"Kode Pos", "Jenis Tinggal", "Alat Transportasi", "Telp Rumah", "No HP",
+		"Email", "Terima KPS", "No KPS", "NIK Ayah", "Nama Ayah",
+		"Tanggal Lahir Ayah", "Pendidikan Ayah", "Pekerjaan Ayah", "Penghasilan Ayah", "NIK Ibu",
+		"Nama Ibu", "Tanggal Lahir Ibu", "Pendidikan Ibu", "Pekerjaan Ibu", "Penghasilan Ibu",
+		"Nama Wali", "Tanggal Lahir Wali", "Pendidikan Wali", "Pekerjaan Wali", "Penghasilan Wali",
+		"Kode Prodi", "Nama Prodi", "SKS Diakui", "Kode PT Asal", "Nama PT Asal",
+		"Kode Prodi Asal", "Nama Prodi Asal", "Jenis Pembiayaan", "Jumlah Biaya Masuk",
 	}
 
 	// Set headers
@@ -143,63 +143,68 @@ func writeExcelMHS(path string, data []Mahasiswa) error {
 		}
 
 		vals := []interface{}{
-			mhs.NIM,             // nim
-			mhs.Nama,            // nama_mahasiswa
-			mhs.Gender,          // jenis_kelamin
-			mhs.TempatLahir,     // tempat_lahir
-			tanggalLahir,        // tanggal_lahir
-			mhs.KodeAgama,       // id_agama
-			mhs.NoKTP,           // nik
-			mhs.ASNIMMSMHS,      // nisn
-			"ID",                // kewarganegaraan
-			mhs.Kelurahan,       // kelurahan
-			mhs.IDWilayah,       // id_wilayah
-			mhs.IDKPS,           // penerima_kps
-			mhs.NamaIbu,         // nama_ibu_kandung
-			mhs.IDJalurMasuk,    // id_jalur_daftar
-			mhs.TanggalMasuk,    // tanggal_daftar
-			mhs.IDPembiayaan,    // id_pembiayaan
-			mhs.BiayaMasuk,      // biaya_masuk
-			mhs.IdNPWPMhs,       // npwp
-			mhs.Jalan,           // jalan
-			mhs.Dusun,           // dusun
-			mhs.RT,              // rt
-			mhs.RW,              // rw
-			mhs.KodePos,         // kode_pos
-			mhs.IDJnsTinggal,    // id_jenis_tinggal
-			mhs.IDAlatTransport, // id_alat_transportasi
-			mhs.Telepon,         // telepon
-			"0" + mhs.HP1,       // handphone
-			mhs.Email,           // email
-			"",                  // nomor_kps
-			mhs.NikAyah,         // nik_ayah
-			mhs.NamaAyah,        // nama_ayah
-			tanggalLahirAyah,
-			mhs.IdDidikAyah,
-			mhs.IdKerjaAyah,
-			mhs.IdPenghasilanAyah,
-			mhs.NikIbu,
-			tanggalLahirIbu,
-			mhs.IdDidikIbu,
-			mhs.IdKerjaIbu,
-			mhs.IdPenghasilanIbu,
-			"", // nama_wali
-			"", // tanggal_lahir_wali
-			0,  // id_pendidikan_wali
-			0,  // id_pekerjaan_wali
-			0,  // id_penghasilan_wali
-			0,  // id_kebutuhan_khusus_mahasiswa
-			0,  // id_kebutuhan_khusus_ayah
-			0,  // id_kebutuhan_khusus_ibu
+			mhs.NIM,                     // NIM
+			mhs.Nama,                    // Nama
+			mhs.TempatLahir,             // Tempat Lahir
+			tanggalLahir,                // Tanggal Lahir
+			mhs.Gender,                  // Jenis Kelamin
+			mhs.NoKTP,                   // NIK
+			mhs.KodeAgama,               // Agama
+			mhs.ASNIMMSMHS,              // NISN
+			mhs.IDJalurMasuk,            // Jalur Pendaftaran
+			mhs.IdNPWPMhs,               // NPWP
+			"ID",                        // Kewarganegaraan
+			mhs.IDJnsDaftar,             // Jenis Pendaftaran
+			mhs.TanggalMasuk,            // Tanggal Masuk Kuliah
+			mhs.PeriodeSMTHN,            // Mulai Semester
+			mhs.Jalan,                   // Jalan
+			mhs.RT,                      // RT
+			mhs.RW,                      // RW
+			mhs.Dusun,                   // Nama Dusun
+			mhs.Kelurahan,               // Kelurahan
+			mhs.IDWilayah,               // Kecamatan
+			mhs.KodePos,                 // Kode Pos
+			mhs.IDJnsTinggal,            // Jenis Tinggal
+			mhs.IDAlatTransport,         // Alat Transportasi
+			mhs.Telepon,                 // Telp Rumah
+			"0" + mhs.HP1,               // No HP
+			mhs.Email,                   // Email
+			mhs.IDKPS,                   // Terima KPS
+			"",                          // No KPS
+			mhs.NikAyah,                 // NIK Ayah
+			mhs.NamaAyah,                // Nama Ayah
+			tanggalLahirAyah,            // Tanggal Lahir Ayah
+			mhs.IdDidikAyah,             // Pendidikan Ayah
+			mhs.IdKerjaAyah,             // Pekerjaan Ayah
+			mhs.IdPenghasilanAyah,       // Penghasilan Ayah
+			mhs.NikIbu,                  // NIK Ibu
+			mhs.NamaIbu,                 // Nama Ibu
+			tanggalLahirIbu,             // Tanggal Lahir Ibu
+			mhs.IdDidikIbu,              // Pendidikan Ibu
+			mhs.IdKerjaIbu,              // Pekerjaan Ibu
+			mhs.IdPenghasilanIbu,        // Penghasilan Ibu
+			"",                          // Nama Wali
+			"",                          // Tanggal Lahir Wali
+			"",                          // Pendidikan Wali
+			"",                          // Pekerjaan Wali
+			"",                          // Penghasilan Wali
+			mhs.KodeJrs,                 // Kode Prodi
+			mhs.NamaJrs,                 // Nama Prodi
+			"",                          // SKS Diakui
+			mhs.IDPerguruanTinggiAsal,   // Kode PT Asal
+			mhs.NamaPerguruanTinggiAsal, // Nama PT Asal
+			mhs.IDProdiAsal,             // Kode Prodi Asal
+			mhs.NamaProgramStudiAsal,    // Nama Prodi Asal
+			mhs.IDPembiayaan,            // Jenis Pembiayaan
+			mhs.BiayaMasuk,              // Jumlah Biaya Masuk
 		}
 
 		for j, v := range vals {
 			cell, _ := excelize.CoordinatesToCellName(j+1, row)
 			xlsx.SetCellValue(sheet, cell, v)
 
-			if j == 0 || j == 6 || j == 7 || j == 25 || j == 26 || j == 29 || j == 34 {
-				xlsx.SetCellStyle(sheet, cell, cell, textStyle)
-			}
+			// Apply text style to all columns
+			xlsx.SetCellStyle(sheet, cell, cell, textStyle)
 		}
 	}
 
@@ -210,24 +215,24 @@ func parseDate(date string) (string, error) {
 	if date == "" {
 		return "", nil
 	}
-	layouts := []string{
-		"15-01-2006",
-		"2006-01-20",
-	}
-	var t time.Time
-	var err error
-	for _, layout := range layouts {
-		t, err = time.Parse(layout, date)
-		if err == nil {
-			return t.Format("2006-01-20"), nil
-		}
-	}
-	return "", err
-	// t, err := time.Parse("02-01-2006", date)
-	// if err != nil {
-	// 	return "", err
+	// layouts := []string{
+	// 	"15-01-2006",
+	// 	"2006-01-20",
 	// }
-	// return t.Format("2006-01-02"), nil
+	// var t time.Time
+	// var err error
+	// for _, layout := range layouts {
+	// 	t, err = time.Parse(layout, date)
+	// 	if err == nil {
+	// 		return t.Format("2006-01-20"), nil
+	// 	}
+	// }
+	// return "", err
+	t, err := time.Parse("02-01-2006", date)
+	if err != nil {
+		return "", err
+	}
+	return t.Format("2006-01-02"), nil
 }
 
 // filterMahasiswaByYear filters mahasiswa based on enrollment year
