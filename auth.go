@@ -23,6 +23,7 @@ func handleAuthentication(scraper *Scraper) error {
 		log(LogInfo, "Cookie Tidak Ditemukan / Cookie Tidak Valid")
 		log(LogInfo, "Login ulang...")
 		if !scraper.Login(scraper.config.Username, scraper.config.Password) {
+			logf(LogError, "login gagal")
 			return fmt.Errorf("login gagal")
 		}
 		if err := saveCookie(); err != nil {
