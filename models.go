@@ -18,6 +18,9 @@ type MataKuliah struct {
 	Namadosen string `json:"namadosen"`
 	Cetak     string `json:"cetak"`
 	Infomk    string `json:"infomk"`
+	KodeJrs   string `json:"kodejrs"`
+	KodeMK    string `json:"kodemk"`
+	KodePK    string `json:"kodepk"`
 }
 
 type Nilai struct {
@@ -31,6 +34,20 @@ type Nilai struct {
 	Tugas    string `json:"tugas"`
 	UTS      string `json:"uts"`
 	UAS      string `json:"uas"`
+}
+
+type BobotMK struct {
+	MataKuliah MataKuliah `json:"mata_kuliah"`
+	Bobot      Bobot      `json:"bobot"`
+}
+
+type Bobot struct {
+	Hadir  string `json:"hdr"`
+	Projek string `json:"projek"`
+	Quiz   string `json:"quiz"`
+	Tugas  string `json:"tgs"`
+	UTS    string `json:"uts"`
+	UAS    string `json:"uas"`
 }
 
 type RekapMKResponse struct {
@@ -117,7 +134,7 @@ type Mahasiswa struct {
 	TglLahirMSMHS           string  `json:"tglhrmsmhs"`
 	KDJekMSMHS              string  `json:"kdjekmsmhs"`
 	TahunMSMHS              string  `json:"tahunmsmhs"`
-	SMAWLMSMHS              string  `json:"smawlmsmhs"`
+	PeriodeSMTHN            string  `json:"smawlmsmhs"`
 	BTSTUMSMHS              string  `json:"btstumsmhs"`
 	ASMMMSMHS               string  `json:"assmamsmhs"`
 	TGMSKMSMHS              string  `json:"tgmskmsmhs"`
