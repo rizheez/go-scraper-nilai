@@ -92,7 +92,7 @@ func scrapeMK(scraper *Scraper, mk MataKuliah, folderJSON, folderExcel string) {
 	if err := writeJSON(filepath.Join(folderJSON, namaFile+".json"), nilai); err != nil {
 		logf(LogError, "Gagal tulis JSON nilai: %v", err)
 	}
-	if err := writeExcel(filepath.Join(folderExcel, namaFile+".xlsx"), nilai); err != nil {
+	if err := writeExcel(filepath.Join(folderExcel, namaFile+".xlsx"), nilai, mk); err != nil {
 		logf(LogError, "Gagal tulis Excel nilai: %v", err)
 	}
 
@@ -118,10 +118,10 @@ func writeJSON(path string, data interface{}) error {
 	return enc.Encode(data)
 }
 
-func writeExcel(path string, data []Nilai) error {
+func writeExcel(path string, data []Nilai, mk MataKuliah) error {
 	f := excelize.NewFile()
 	sheet := "Sheet1"
-	headers := []string{ExcelNIM, ExcelNama, ExcelAngka, ExcelHuruf, ExcelKehadiran, ExcelProjek, ExcelQuiz, ExcelTugas, ExcelUTS, ExcelUAS}
+	headers := []string{ExcelNIM, ExcelNama, ExcelKodeMK, ExcelNamaMK, ExcelSemester, ExcelKelas, ExcelAngka, ExcelHuruf, ExcelKehadiran, ExcelProjek, ExcelQuiz, ExcelTugas, ExcelUTS, ExcelUAS, ExcelKodePK, ExcelNamaPK, ExcelKodeProdi, ExcelNamaProdi}
 
 	for i, h := range headers {
 		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
@@ -130,7 +130,7 @@ func writeExcel(path string, data []Nilai) error {
 
 	for i, n := range data {
 		row := i + 2
-		vals := []interface{}{n.NIM, n.Nama, n.NilAngka, n.NilHuruf, n.Hadir, n.Projek, n.Quiz, n.Tugas, n.UTS, n.UAS}
+		vals := []interface{}{n.NIM, n.Nama, mk.KodeMK, mk.Namamk, mk.Smtthnakd, mk.Kelas, n.NilAngka, n.NilHuruf, n.Hadir, n.Projek, n.Quiz, n.Tugas, n.UTS, n.UAS, mk.KodeJrs, mk.NamaJrs, mk.KodeJrs, mk.NamaJrs}
 		for j, v := range vals {
 			cell, _ := excelize.CoordinatesToCellName(j+1, row)
 			f.SetCellValue(sheet, cell, v)
@@ -178,4 +178,5 @@ func writeBobotExcel(path string, data BobotMK) error {
 
 	return f.SaveAs(path)
 }
+
 // no changes
