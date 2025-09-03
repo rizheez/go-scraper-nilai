@@ -21,6 +21,8 @@ type MataKuliah struct {
 	KodeJrs   string `json:"kodejrs"`
 	KodeMK    string `json:"kodemk"`
 	KodePK    string `json:"kodepk"`
+	Smtthnakd string `json:"smtthnakd"`
+	NamaJrs   string `json:"namajrs"`
 }
 
 type Nilai struct {
