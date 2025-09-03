@@ -63,6 +63,10 @@ const (
 	// Excel headers
 	ExcelNIM       = "Nim"
 	ExcelNama      = "Nama Mahasiswa"
+	ExcelKodeMK    = "Kode Mata Kuliah"
+	ExcelNamaMK    = "Nama Mata Kuliah"
+	ExcelSemester  = "Semester"
+	ExcelKelas     = "Nama Kelas"
 	ExcelAngka     = "Angka"
 	ExcelHuruf     = "Huruf"
 	ExcelKehadiran = "Aktivitas Partisipatif"
@@ -71,6 +75,10 @@ const (
 	ExcelTugas     = "Kognitif/ Pengetahuan Tugas"
 	ExcelUTS       = "Kognitif/ Pengetahuan Ujian Tengah Semester"
 	ExcelUAS       = "Kognitif/ Pengetahuan Ujian Akhir Semester"
+	ExcelKodePK    = "Kode Prodi Mahasiswa"
+	ExcelNamaPK    = "Nama Prodi Mahasiswa"
+	ExcelKodeProdi = "Kode Prodi Kelas"
+	ExcelNamaProdi = "Nama Prodi Kelas"
 
 	// Progress bar
 	ProgressBarLength = 40
